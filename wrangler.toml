@@ -1,0 +1,29 @@
+name = "better-beans-mcp-server"
+main = "src/index.ts"
+compatibility_date = "2023-11-21"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+SUPABASE_URL = "https://izdbjqabwtenpgxopmyf.supabase.co"
+WORKER_ENV = "development"
+
+# Secrets required but not stored in version control:
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6ZGJqcWFid3RlbnBneG9wbXlmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjM4ODExNCwiZXhwIjoyMDYxOTY0MTE0fQ.4BTKdz-pC7pNGflJMxe0NASFBCTuhCDWI9HFxMyLAiE"
+API_KEYS_SALT = "Teadog"
+
+# Add your custom domain, if you have one
+# route = { pattern = "api.better-beans.example.com/*", zone_name = "example.com" }
+
+[build]
+command = "npm run build"
+
+[env.production]
+vars = { WORKER_ENV = "production" }
+
+[env.staging]
+vars = { WORKER_ENV = "staging" }
+
+# Define development variables
+[dev]
+port = 8787
+local_protocol = "http"

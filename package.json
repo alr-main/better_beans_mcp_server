@@ -1,0 +1,49 @@
+{
+  "name": "better-beans-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "build": "tsc",
+    "format": "prettier --write 'src/**/*.ts'",
+    "lint": "eslint 'src/**/*.ts'",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production"
+  },
+  "keywords": [
+    "mcp",
+    "coffee",
+    "cloudflare",
+    "workers",
+    "json-rpc"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "MCP server for coffee roaster discovery and product search",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250521.0",
+    "@types/node": "^22.15.21",
+    "@types/uuid": "^10.0.0",
+    "eslint": "^9.27.0",
+    "eslint-config-prettier": "^10.1.5",
+    "miniflare": "^4.20250508.3",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4",
+    "wrangler": "^4.16.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.7",
+    "uuid": "^11.1.0",
+    "zod": "^3.25.13"
+  }
+}
