@@ -54,11 +54,16 @@ This document outlines the development tasks and milestones for the Better Beans
   - [x] Implement schema validation against database responses
   - [x] Create query utility functions that maintain type safety
 
-- [ ] **Vector Search Integration** (Est. 2 days)
+- [x] **Vector Search Integration** (Est. 2 days)
   - [x] Research and select vector search implementation (Cloudflare Vector Engine vs Supabase pgvector)
   - [x] Implement vector embedding lookup
   - [x] Create similarity search functions
-  - [ ] Optimize vector search performance
+  - [x] Optimize vector search performance
+    - [x] Implement pgvector with HNSW index for improved search speed
+    - [x] Add SQL functions for optimized vector searches
+    - [x] Fix vector format compatibility issues
+    - [x] Implement configurable similarity threshold
+    - [x] Add SSE streaming support for progressive loading
 
 ## Phase 3: Core Service Implementation
 
@@ -66,13 +71,13 @@ This document outlines the development tasks and milestones for the Better Beans
   - [x] Implement search by name and location
   - [x] Add filtering by characteristics
   - [x] Create response formatting functions
-  - [ ] Write comprehensive tests
+  - [x] Write comprehensive tests
 
 - [x] **Coffee Product Service** (Est. 2 days)
   - [x] Implement product search by various attributes
   - [x] Add filtering by flavor profiles
   - [x] Create response formatting functions
-  - [ ] Write comprehensive tests
+  - [x] Write comprehensive tests
 
 - [x] **Semantic Search Service** (Est. 3 days)
   - [x] Implement flavor profile similarity search
@@ -114,6 +119,12 @@ This document outlines the development tasks and milestones for the Better Beans
 
 ## Phase 5: Testing, Optimization, and Deployment
 
+- [ ] **Secure Query Pipeline Integration** (Est. 2 days)
+  - [ ] Update PromptProcessor to use secure pipeline instead of direct Supabase client
+  - [ ] Run comprehensive tests to ensure all database operations go through secure pipeline
+  - [ ] Update documentation to reflect secure query pipeline usage patterns
+  - [ ] Verify role-based access control with security tests
+
 - [ ] **MCP Protocol Compliance Testing** (Est. 1 day)
   - [ ] Verify compliance with JSON-RPC 2.0 specification
   - [ ] Test manifest endpoint structure and validity
@@ -125,6 +136,11 @@ This document outlines the development tasks and milestones for the Better Beans
   - [ ] Implement integration tests
   - [ ] Add performance tests
   - [ ] Test edge cases and error handling
+
+- [ ] **Test Coverage Improvements** (Est. 3 days)
+  - [ ] Improve server.py coverage (currently 46%) - add tests for schema tools, database operations, storage operations, and error handling
+  - [ ] Enhance db/secure_utils.py coverage (currently 34%) - add tests for error handling, edge cases in authorization logic, and schema validation
+  - [ ] Boost storage_client.py coverage (currently 28%) - add tests for file operations, bucket management, and error handling
 
 - [ ] **Performance Optimization** (Est. 2 days)
   - [ ] Analyze and optimize database queries
@@ -165,7 +181,22 @@ This document outlines the development tasks and milestones for the Better Beans
   - [ ] Plan for future enhancements
 
 ## Discovered During Work
-*Tasks discovered during development will be added here.*
+
+- [ ] **Fix Pydantic Deprecation Warnings**
+  - [x] Migrate from @validator to @field_validator
+  - [x] Update all schema validation code to use Pydantic v2 patterns
+
+- [ ] **Test Suite Improvements**
+  - [x] Fix test_server.py UserRole assertions
+  - [x] Update test_processor.py with robust patching strategy
+  - [x] Fix test_structured_prompts.py mock objects
+  - [x] Update pytest.ini to enable all tests
+
+- [ ] **Security Pipeline Integration**
+  - [x] Update schema.py to use secure pipeline for schema discovery
+  - [x] Update authorization.py with proper role definitions
+  - [x] Update server.py MCP tools to use secure pipeline
+  - [ ] Update documentation with secure query pipeline examples
 
 ## Last Updated
-Updated on: 2025-05-21
+Updated on: 2025-05-21 16:22

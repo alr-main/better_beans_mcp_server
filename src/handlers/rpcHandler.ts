@@ -113,38 +113,38 @@ export async function handleRpcRequest(
       id: (rpcRequest as any)?.id || null,
     });
   }
-  
-  // Get the API key from the request headers
-  const apiKey = request.headers.get('X-Api-Key') || '';
-  
-  // Validate the API key (skip in development mode)
-  if (env.WORKER_ENV !== 'development') {
-    const { valid, error } = await validateApiKey(apiKey, env);
-    
-    if (!valid) {
-      return createJsonRpcErrorResponse({
-        code: ERROR_CODES.UNAUTHORIZED,
-        message: error || 'Unauthorized: Invalid API key',
-        id: rpcRequest.id,
-      });
-    }
-  }
-  
-  // Process the method call
+
   try {
-    // Set up for streaming if requested
-    if (isStreamingRequested) {
-      return await handleStreamingRequest(rpcRequest, env, ctx);
-    } else {
-      // Standard non-streaming response
-      const result = await methodRouter(rpcRequest.method, rpcRequest.params, env);
+    // Get authorization from request header
+    const apiKey = request.headers.get('X-Api-Key');
+    
+    // Valid API key is required for non-public methods
+    if (env.WORKER_ENV !== 'development') {
+      const { valid, error } = await validateApiKey(apiKey, env);
       
-      // Return the successful response
-      return createJsonRpcSuccessResponse({
-        result,
-        id: rpcRequest.id,
-      });
+      if (!valid) {
+        return createJsonRpcErrorResponse({
+          code: ERROR_CODES.UNAUTHORIZED,
+          message: error || 'Unauthorized: Invalid API key',
+          id: rpcRequest.id,
+        });
+      }
     }
+
+    // If streaming is requested and method supports it, use streaming response
+    if (isStreamingRequested) {
+      console.log(`Streaming requested for method ${rpcRequest.method}`);
+      return await handleStreamingRequest(rpcRequest, env, ctx);
+    }
+
+    // Route the request to the appropriate method
+    const result = await methodRouter(rpcRequest.method, rpcRequest.params, env);
+    
+    // Return the JSON-RPC response
+    return createJsonRpcSuccessResponse({
+      result,
+      id: rpcRequest.id,
+    });
   } catch (error) {
     console.error(`Error processing method ${rpcRequest.method}:`, error);
     
