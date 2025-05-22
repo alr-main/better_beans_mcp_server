@@ -38,16 +38,22 @@ const SERVER_CAPABILITIES = {
  * @returns MCP initialization response
  */
 export async function handleInitialize(params: any): Promise<any> {
+
+  console.log('🔄 MCP Initialize request received:', JSON.stringify(params));
+
   // Check if the client's protocol version is supported
   const clientProtocolVersion = params?.protocolVersion;
   
   if (!clientProtocolVersion) {
+    console.log('❌ Missing protocol version');
     throw new InvalidParamsError('Missing protocol version in initialize request');
   }
   
   // Note: In a production system, you would check if the client's protocol
   // version is compatible. For simplicity, we're always returning our version.
   
+  console.log('✅ Returning initialize response');
+
   return {
     protocolVersion: MCP_PROTOCOL_VERSION,
     capabilities: SERVER_CAPABILITIES,

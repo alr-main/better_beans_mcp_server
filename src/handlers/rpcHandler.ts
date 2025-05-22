@@ -45,6 +45,8 @@ export async function handleRpcRequest(
   // Check if client wants streaming response
   const acceptHeader = request.headers.get('Accept') || '';
   const isStreamingRequested = acceptHeader.includes('text/event-stream');
+
+  console.error('🔍 Accept header:', acceptHeader);
   
   // For SSE requests, we can accept both GET and POST
   // For regular JSON-RPC, we only allow POST
@@ -116,13 +118,22 @@ export async function handleRpcRequest(
     });
   }
   
-  // Check if this is an MCP protocol request
+  console.error('🔍 Is streaming requested:', isStreamingRequested);
+  
+  // MCP requests should NEVER be treated as streaming
   const isMcpRequest = [
     'initialize',
     'list_tools',
     'call_tool',
     'notifications/initialized'
   ].includes(rpcRequest.method);
+  
+  // Override streaming detection for MCP requests
+  const shouldUseStreaming = isStreamingRequested && !isMcpRequest;
+  
+  console.error('🔍 Method:', rpcRequest.method);
+  console.error('🔍 Is MCP request:', isMcpRequest);
+  console.error('🔍 Should use streaming:', shouldUseStreaming);
 
   try {
     // Get authorization from request header
@@ -143,8 +154,8 @@ export async function handleRpcRequest(
     }
 
     // If streaming is requested and method supports it, use streaming response
-    if (isStreamingRequested) {
-      console.log(`Streaming requested for method ${rpcRequest.method}`);
+    if (shouldUseStreaming) {
+      console.error(`Streaming requested for method ${rpcRequest.method}`);
       return await handleStreamingRequest(rpcRequest, env, ctx);
     }
 
@@ -153,6 +164,7 @@ export async function handleRpcRequest(
     
     // Handle MCP protocol requests differently
     if (isMcpRequest) {
+      console.error('🔄 Processing MCP request');
       // Process via the MCP protocol handler
       result = await processMcpRequest(rpcRequest.method, rpcRequest.params, env);
       
@@ -161,6 +173,7 @@ export async function handleRpcRequest(
         return new Response(null, { status: 204 });
       }
     } else {
+      console.error('🔄 Processing regular request');
       // Handle regular methods via our existing router
       result = await methodRouter(rpcRequest.method, rpcRequest.params, env);
     }

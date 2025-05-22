@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 SUPABASE_URL = "https://izdbjqabwtenpgxopmyf.supabase.co"
-WORKER_ENV = "development"
+WORKER_ENV = "production"
 
 # Secrets required but not stored in version control:
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6ZGJqcWFid3RlbnBneG9wbXlmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjM4ODExNCwiZXhwIjoyMDYxOTY0MTE0fQ.4BTKdz-pC7pNGflJMxe0NASFBCTuhCDWI9HFxMyLAiE"
@@ -27,3 +27,10 @@ vars = { WORKER_ENV = "staging" }
 [dev]
 port = 8787
 local_protocol = "http"
+
+# wrangler.toml (wrangler v3.88.0^)
+[observability.logs]
+enabled = true
+
+
+
