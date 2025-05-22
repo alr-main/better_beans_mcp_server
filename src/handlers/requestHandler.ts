@@ -36,7 +36,9 @@ export async function handleRequest(
       return handleHealthRequest(request, env);
     } else if (path.endsWith('/manifest')) {
       return handleManifestRequest(request, env);
-    } else if (path.endsWith('/rpc')) {
+    } else if (path.endsWith('/rpc') || path === '/' || path === '') {
+      // Handle both /rpc and root path requests with the RPC handler
+      // This ensures MCP protocol requests to the root URL work correctly
       return handleRpcRequest(request, env, ctx);
     } else if (path.endsWith('/sse')) {
       // Handle streaming requests with our dedicated SSE handler
