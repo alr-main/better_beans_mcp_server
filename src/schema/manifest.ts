@@ -1,6 +1,7 @@
 /**
  * MCP Server Manifest Schema
  * Defines the MCP server capabilities and available methods
+ * Implements the Model Context Protocol (MCP) server manifest format
  */
 import { methodSchemas } from './methods';
 
@@ -9,7 +10,10 @@ import { methodSchemas } from './methods';
  * This defines the server capabilities and available methods
  */
 export const serverManifest = {
-  schema_version: 'v1',
+  // MCP Protocol specific fields
+  mcp_version: '2024-11-05',  // MCP protocol version supported
+  
+  // Server identification
   name_for_human: 'Better Beans Coffee Discovery',
   name_for_model: 'better_beans',
   description_for_human: 'Search for coffee roasters and products from specialty roasters around the world.',
@@ -19,7 +23,14 @@ export const serverManifest = {
   },
   api: {
     type: 'jsonrpc',
-    url: 'https://better-beans-mcp.workers.dev/rpc' // This will be updated for production
+    url: 'https://better-beans-mcp-server.al-ricotta.workers.dev/rpc' // Updated with correct subdomain
+  },
+  
+  // MCP capabilities
+  capabilities: {
+    tools: {
+      listChanged: true
+    }
   },
   functions: [
     {

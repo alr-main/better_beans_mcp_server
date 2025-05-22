@@ -3,6 +3,7 @@
  * Main entry point for the Cloudflare Worker
  */
 import { handleRequest } from './handlers/requestHandler.js';
+import { optimizeVectorSearch } from './utils/migrationUtils.js';
 
 export default {
   /**
@@ -17,6 +18,23 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ): Promise<Response> {
+    // For optimization requests, check URL path
+    const url = new URL(request.url);
+    if (url.pathname === '/optimize-vector-search') {
+      try {
+        const result = await optimizeVectorSearch(env);
+        return new Response(JSON.stringify(result), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Optimization failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    // Handle normal requests
     return handleRequest(request, env, ctx);
   },
 };

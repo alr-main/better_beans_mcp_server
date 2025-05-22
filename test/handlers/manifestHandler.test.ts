@@ -49,7 +49,7 @@ describe('Manifest Handler', () => {
     const manifest = await response.json();
     
     // Verify manifest has all required fields for MCP Server standard
-    expect(manifest).toHaveProperty('schema_version');
+    expect(manifest).toHaveProperty('mcp_version');
     expect(manifest).toHaveProperty('name_for_human');
     expect(manifest).toHaveProperty('name_for_model');
     expect(manifest).toHaveProperty('description_for_human');

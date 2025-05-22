@@ -4,6 +4,35 @@
  */
 
 /**
+ * Database schema types
+ * Includes support for vector embeddings and similarity search
+ */
+
+/**
+ * Vector type for pgvector integration
+ * This is a custom type that represents a vector of floating point numbers
+ */
+export type Vector = number[];
+
+/**
+ * Database function response types
+ */
+export interface VectorSearchResult {
+  id: string;
+  name: string;
+  roast_level: string;
+  process_method: string;
+  description: string;
+  price: number;
+  image_url: string;
+  flavor_tags: string[];
+  roaster_details: { id: string; name: string };
+  embedding?: Vector;
+  similarity: number;
+  distance: number;
+}
+
+/**
  * Database schema definition for type safety
  */
 export interface Database {

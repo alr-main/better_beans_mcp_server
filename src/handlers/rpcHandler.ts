@@ -2,6 +2,7 @@
  * RPC endpoint handler
  * Processes JSON-RPC requests and routes them to the appropriate method handlers
  * Supports both standard and streaming responses using Server-Sent Events (SSE)
+ * Implements Model Context Protocol (MCP) support for AI assistants
  */
 import { Env } from '../index.js';
 import { createCorsResponse } from '../utils/corsUtils.js';
@@ -14,6 +15,7 @@ import {
   writeJsonRpcErrorToStream,
   closeSseStream 
 } from '../utils/sseUtils.js';
+import { processMcpRequest } from './mcpHandler.js';
 
 // Standard JSON-RPC error codes
 const ERROR_CODES = {
@@ -113,13 +115,22 @@ export async function handleRpcRequest(
       id: (rpcRequest as any)?.id || null,
     });
   }
+  
+  // Check if this is an MCP protocol request
+  const isMcpRequest = [
+    'initialize',
+    'list_tools',
+    'call_tool',
+    'notifications/initialized'
+  ].includes(rpcRequest.method);
 
   try {
     // Get authorization from request header
     const apiKey = request.headers.get('X-Api-Key');
     
     // Valid API key is required for non-public methods
-    if (env.WORKER_ENV !== 'development') {
+    // MCP requests don't need API key validation as they're designed to be used by AI assistants
+    if (!isMcpRequest && env.WORKER_ENV !== 'development') {
       const { valid, error } = await validateApiKey(apiKey, env);
       
       if (!valid) {
@@ -137,8 +148,22 @@ export async function handleRpcRequest(
       return await handleStreamingRequest(rpcRequest, env, ctx);
     }
 
-    // Route the request to the appropriate method
-    const result = await methodRouter(rpcRequest.method, rpcRequest.params, env);
+    // Route the request to the appropriate handler
+    let result;
+    
+    // Handle MCP protocol requests differently
+    if (isMcpRequest) {
+      // Process via the MCP protocol handler
+      result = await processMcpRequest(rpcRequest.method, rpcRequest.params, env);
+      
+      // For notifications that don't require a response
+      if (rpcRequest.method === 'notifications/initialized') {
+        return new Response(null, { status: 204 });
+      }
+    } else {
+      // Handle regular methods via our existing router
+      result = await methodRouter(rpcRequest.method, rpcRequest.params, env);
+    }
     
     // Return the JSON-RPC response
     return createJsonRpcSuccessResponse({
