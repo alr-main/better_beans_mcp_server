@@ -107,12 +107,66 @@ export async function methodRouter(
       return getCoffeeProductDetails(params, env);
       
     case 'similarity_search':
-      // Similarity search
-      if (streamingRequested) {
-        // Use the dedicated streaming handler for similarity search
-        return handleStreamingSimilaritySearch(params, env, options);
+      console.log('📡 Processing similarity_search method call');
+      console.log('📡 Raw params:', JSON.stringify(params, null, 2));
+      
+      // Create a normalized copy of the parameters
+      let processedParams: Record<string, any> = {};
+      
+      // Handle all possible parameter formats
+      // Check for flavorProfile in different formats
+      if (Array.isArray(params.flavorProfile)) {
+        processedParams.flavorProfile = params.flavorProfile;
+      } else if (Array.isArray(params['flavorProfile'])) {
+        processedParams.flavorProfile = params['flavorProfile'];
+      } else if (Array.isArray(params['`flavorProfile`'])) {
+        processedParams.flavorProfile = params['`flavorProfile`'];
+      } else {
+        // If we can't find flavorProfile, try to extract it from any array property
+        for (const key in params) {
+          if (Array.isArray(params[key]) && params[key].length > 0 && 
+              typeof params[key][0] === 'string') {
+            console.log(`📡 Found potential flavorProfile in key: ${key}`);
+            processedParams.flavorProfile = params[key];
+            break;
+          }
+        }
       }
-      return similaritySearch(params, env);
+      
+      // Extract maxResults parameter
+      if (typeof params.maxResults === 'number') {
+        processedParams.maxResults = params.maxResults;
+      } else if (typeof params['maxResults'] === 'number') {
+        processedParams.maxResults = params['maxResults'];
+      } else if (typeof params['`maxResults`'] === 'number') {
+        processedParams.maxResults = params['`maxResults`'];
+      } else {
+        // Default maxResults
+        processedParams.maxResults = 10;
+      }
+      
+      // Set very low threshold to ensure we get results
+      processedParams.threshold = 0.01;
+      
+      // Disable cache to get fresh results during testing
+      processedParams.useCache = false;
+      
+      console.log('📡 Processed params:', JSON.stringify(processedParams, null, 2));
+      
+      // Verify we have required parameters
+      if (!processedParams.flavorProfile || !Array.isArray(processedParams.flavorProfile) || 
+          processedParams.flavorProfile.length === 0) {
+        console.error('❌ Missing or invalid flavorProfile parameter');
+        throw new InvalidParamsError('Missing or invalid flavorProfile parameter');
+      }
+      
+      // Handle streaming mode
+      if (streamingRequested) {
+        return handleStreamingSimilaritySearch(processedParams, env, options);
+      }
+      
+      // Handle regular mode
+      return similaritySearch(processedParams, env);
       
     default:
       throw new MethodNotFoundError(`Method '${method}' not found`);
