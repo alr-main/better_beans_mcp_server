@@ -44,6 +44,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.7",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.103.0",
     "uuid": "^11.1.0",
     "zod": "^3.25.13"
   }

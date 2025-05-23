@@ -1,0 +1,13 @@
+{
+  "name": "better-beans-debug",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "diagnose": "node diagnose_similarity_search.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1",
+    "node-fetch": "^3.3.2"
+  }
+}

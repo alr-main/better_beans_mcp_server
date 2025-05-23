@@ -124,7 +124,11 @@ export async function handleRpcRequest(
   const isMcpRequest = [
     'initialize',
     'list_tools',
+    'tools/list',        // Claude Desktop uses this
     'call_tool',
+    'tools/call',        // In case Claude uses this variant
+    'resources/list',    // Claude is trying to list resources
+    'prompts/list',      // Claude is trying to list prompts
     'notifications/initialized'
   ].includes(rpcRequest.method);
   
@@ -139,19 +143,17 @@ export async function handleRpcRequest(
     // Get authorization from request header
     const apiKey = request.headers.get('X-Api-Key');
     
-    // Valid API key is required for non-public methods
-    // MCP requests don't need API key validation as they're designed to be used by AI assistants
-    if (!isMcpRequest && env.WORKER_ENV !== 'development') {
-      const { valid, error } = await validateApiKey(apiKey, env);
-      
-      if (!valid) {
-        return createJsonRpcErrorResponse({
-          code: ERROR_CODES.UNAUTHORIZED,
-          message: error || 'Unauthorized: Invalid API key',
-          id: rpcRequest.id,
-        });
-      }
+    // API key validation is disabled for this public read-only MCP server
+    // All methods are accessible without authentication
+    
+    // Log API key attempts for debugging but don't require them
+    if (apiKey) {
+      console.log('API key provided but not required:', apiKey.substring(0, 3) + '...');
+    } else {
+      console.log('No API key provided (not required for this public read-only server)');
     }
+    
+    // No validation performed - all requests are allowed
 
     // If streaming is requested and method supports it, use streaming response
     if (shouldUseStreaming) {
@@ -224,9 +226,93 @@ export async function handleRpcRequest(
  * @returns Response object with proper formatting
  */
 function createJsonRpcSuccessResponse(response: { result: any; id: string | number }): Response {
+  console.error('🔄 Creating JSON-RPC success response for id:', response.id);
+  console.error('🔍 Response type:', typeof response.result);
+  
+  // Special handling for MCP responses - don't wrap these in content arrays
+  const isMcpDirectResponse = response.result && 
+                            typeof response.result === 'object' && 
+                            (
+                              // initialize response
+                              (response.result.protocolVersion && 
+                               response.result.capabilities && 
+                               response.result.serverInfo) ||
+                              // tools/list response
+                              response.result.tools instanceof Array ||
+                              // resources/list response
+                              response.result.resources instanceof Array ||
+                              // prompts/list response
+                              response.result.prompts instanceof Array
+                            );
+  
+  // Special handling for similarity_search results - detect by checking for query and results structure
+  const isSimilaritySearchResponse = response.result && 
+                                   typeof response.result === 'object' && 
+                                   response.result.query && 
+                                   response.result.query.flavorProfile && 
+                                   Array.isArray(response.result.results);
+  
+  // Check if this is an MCP response that already has the content array structure
+  const isMcpContentResponse = response.result && 
+                               typeof response.result === 'object' && 
+                               Array.isArray(response.result.content);
+  
+  let finalResult;
+  
+  if (isMcpDirectResponse) {
+    // Don't wrap MCP protocol responses
+    // The client expects the raw response for MCP methods
+    finalResult = response.result;
+    console.error('📤 Sending direct MCP response');
+  } else if (isSimilaritySearchResponse) {
+    // Special formatting for similarity_search to match Claude's expected format
+    console.error('🍺 COFFEE SEARCH: Formatting response for Claude');
+    console.error('🔍 Results count:', response.result.results ? response.result.results.length : 0);
+    
+    // Log if no results were found, but DO NOT use hardcoded data
+    if (response.result.results && response.result.results.length === 0) {
+      console.error('🚨 No coffee matches found for the search criteria');
+      
+      // Keep the empty results instead of using hardcoded test data
+      // This ensures we only return real database results
+      console.error('📊 Returning empty results set - no hardcoded fallback');
+    }
+    
+    // Format for Claude's expected structure - text must be a simple string, not an object
+    const resultString = JSON.stringify(response.result);
+    console.error('Stringified result:', resultString.substring(0, 100) + '...');
+    
+    finalResult = {
+      content: [
+        {
+          type: "text",
+          text: resultString
+        }
+      ]
+    };
+    
+    console.error('📤 Formatted similarity_search response for Claude with content.text.text structure');
+  } else if (isMcpContentResponse) {
+    // Already has content array - use as is
+    finalResult = response.result;
+    console.error('📤 Sending content-wrapped response');
+  } else {
+    // For standard RPC responses (non-MCP), wrap in content array
+    // Format for Claude Desktop which expects {content: [{type: "text", text: "..."}]}
+    finalResult = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(response.result)
+        }
+      ]
+    };
+    console.error('📤 Wrapping response in content array');
+  }
+  
   const jsonRpcResponse: JsonRpcResponse = {
     jsonrpc: '2.0',
-    result: response.result,
+    result: finalResult,
     id: response.id,
   };
   

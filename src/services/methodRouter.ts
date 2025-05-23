@@ -7,7 +7,8 @@ import { Env } from '../index.js';
 // Import service methods
 import { searchCoffeeRoasters, getRoasterDetails, validateRoasterSearchParams } from './roasterService.js';
 import { searchCoffeeProducts, getCoffeeProductDetails } from './coffeeService.js';
-import { similaritySearch, handleStreamingSimilaritySearch } from './semanticService.js';
+// Using our new vector search implementation instead of the old one
+import { directVectorSearch } from './betterVectorSearch.js';
 
 // Custom error for invalid parameters
 export class InvalidParamsError extends Error {
@@ -121,35 +122,25 @@ export async function methodRouter(
         processedParams.flavorProfile = params['flavorProfile'];
       } else if (Array.isArray(params['`flavorProfile`'])) {
         processedParams.flavorProfile = params['`flavorProfile`'];
-      } else {
-        // If we can't find flavorProfile, try to extract it from any array property
-        for (const key in params) {
-          if (Array.isArray(params[key]) && params[key].length > 0 && 
-              typeof params[key][0] === 'string') {
-            console.log(`📡 Found potential flavorProfile in key: ${key}`);
-            processedParams.flavorProfile = params[key];
-            break;
+      } else if (typeof params.flavorProfile === 'string') {
+        // Handle the case where flavorProfile might be passed as a string
+        try {
+          const parsed = JSON.parse(params.flavorProfile);
+          if (Array.isArray(parsed)) {
+            processedParams.flavorProfile = parsed;
+          } else {
+            throw new InvalidParamsError('flavorProfile must be an array of strings');
           }
+        } catch (e) {
+          // If it's not JSON, treat it as a single tag
+          processedParams.flavorProfile = [params.flavorProfile];
         }
-      }
-      
-      // Extract maxResults parameter
-      if (typeof params.maxResults === 'number') {
-        processedParams.maxResults = params.maxResults;
-      } else if (typeof params['maxResults'] === 'number') {
-        processedParams.maxResults = params['maxResults'];
-      } else if (typeof params['`maxResults`'] === 'number') {
-        processedParams.maxResults = params['`maxResults`'];
       } else {
-        // Default maxResults
-        processedParams.maxResults = 10;
+        throw new InvalidParamsError('flavorProfile is required and must be an array of strings');
       }
       
-      // Set very low threshold to ensure we get results
-      processedParams.threshold = 0.01;
-      
-      // Disable cache to get fresh results during testing
-      processedParams.useCache = false;
+      // Copy other parameters
+      processedParams.maxResults = params.maxResults || params['maxResults'] || 10;
       
       console.log('📡 Processed params:', JSON.stringify(processedParams, null, 2));
       
@@ -160,13 +151,13 @@ export async function methodRouter(
         throw new InvalidParamsError('Missing or invalid flavorProfile parameter');
       }
       
-      // Handle streaming mode
-      if (streamingRequested) {
-        return handleStreamingSimilaritySearch(processedParams, env, options);
-      }
-      
-      // Handle regular mode
-      return similaritySearch(processedParams, env);
+      // Use our new better vector search implementation
+      // This uses a fixed threshold of 0.01 that works with our database
+      return directVectorSearch(
+        processedParams.flavorProfile,
+        processedParams.maxResults,
+        env
+      );
       
     default:
       throw new MethodNotFoundError(`Method '${method}' not found`);

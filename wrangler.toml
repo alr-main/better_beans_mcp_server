@@ -17,6 +17,11 @@ API_KEYS_SALT = "Teadog"
 [build]
 command = "npm run build"
 
+# Include all SQL migrations
+[[build.upload.rules]]
+type = "include"
+globs = ["src/database/migrations/*.sql"]
+
 [env.production]
 vars = { WORKER_ENV = "production" }
 

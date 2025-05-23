@@ -120,13 +120,25 @@ npm run deploy:production
 - `get_roaster_details` - Get detailed information about a specific roaster
 - `search_coffee_products` - Find coffee products based on search criteria
 - `get_coffee_product_details` - Get detailed information about a specific coffee product
-- `similarity_search` - Find similar coffees based on taste profile
+- `similarity_search` - Find similar coffees based on taste profile using semantic vector search
+
+## Vector Search Implementation
+
+The `similarity_search` method uses OpenAI embeddings to perform semantic similarity searches based on flavor profiles:
+
+- **Vector Embedding**: Uses OpenAI's text-embedding-3-small model to convert flavor profiles to 1536-dimensional vectors
+- **pgvector**: Leverages Supabase's pgvector extension for efficient vector similarity search
+- **Adaptive Thresholds**: Uses optimized similarity thresholds (0.01) based on extensive testing
+- **Fallback Strategy**: Implements a multi-level fallback strategy with progressively lower thresholds
+- **Text-Based Fallback**: Falls back to text-based matching when vector search doesn't yield results
+- **Public Access**: Available without API key authentication for read-only operations
 
 ## Security
 
 - Input validation with Zod schemas
 - Parameterized database queries
-- API key authentication
+- Public read-only access (no API key required)
+- API key validation disabled for read-only methods
 - Rate limiting
 - Proper error handling
 

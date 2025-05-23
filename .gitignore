@@ -33,3 +33,14 @@ yarn-error.log*
 *.sublime-workspace
 *.swp
 *.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+*.egg-info/
+.pytest_cache/
+embedding_update.log

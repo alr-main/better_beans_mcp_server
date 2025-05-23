@@ -39,7 +39,8 @@ vi.mock('../../src/services/methodRouter', () => {
 const mockEnv = {
   SUPABASE_URL: 'https://test-url.supabase.co',
   SUPABASE_KEY: 'test-key',
-  WORKER_ENV: 'test',
+  WORKER_ENV: 'development' as const, // Must be one of: 'development', 'staging', or 'production'
+  API_KEYS_SALT: 'test-salt'
 };
 
 describe('MCP Protocol Handler', () => {

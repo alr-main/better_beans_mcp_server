@@ -12,10 +12,11 @@ export const methodSchemas = {
    */
   searchCoffeeRoasters: {
     type: 'object',
+    description: 'Find coffee roasters based on search criteria. To list all roasters, omit the query parameter or leave it empty. For targeted searches, use terms like "coffee", "roast", or city names like "Portland".',
     properties: {
       query: {
         type: 'string',
-        description: 'Search term for finding roasters'
+        description: 'Search term for finding roasters by name. Example values: "coffee", "roast", or city names. Optional - omit to list all roasters.'
       },
       location: {
         type: 'string',
@@ -57,11 +58,12 @@ export const methodSchemas = {
    */
   getRoasterDetails: {
     type: 'object',
+    description: 'Get detailed information about a specific coffee roaster, including their location, contact information, and available coffees. First use search_coffee_roasters to find a roaster, then use this method with the returned ID.',
     required: ['roasterId'],
     properties: {
       roasterId: {
         type: 'string',
-        description: 'UUID of the roaster to retrieve details for'
+        description: 'UUID of the roaster to retrieve details for. This ID must be obtained from the search_coffee_roasters method results.'
       }
     }
   },
@@ -71,6 +73,7 @@ export const methodSchemas = {
    */
   searchCoffeeProducts: {
     type: 'object',
+    description: 'Search for coffee products by name, origin, or roaster. Best for general searches by text, NOT for flavor-based queries. For flavor-specific searches (like "fruity", "chocolatey", etc.), use the similarity_search method instead.',
     properties: {
       query: {
         type: 'string',
@@ -126,11 +129,12 @@ export const methodSchemas = {
    */
   getCoffeeProductDetails: {
     type: 'object',
+    description: 'Get detailed information about a specific coffee product, including origin, flavor profile, and processing details. First use search_coffee_products to find a coffee, then use this method with the returned ID.',
     required: ['productId'],
     properties: {
       productId: {
         type: 'string',
-        description: 'UUID of the coffee product to retrieve details for'
+        description: 'UUID of the coffee product to retrieve details for. This ID must be obtained from search_coffee_products method results.'
       }
     }
   },
@@ -140,6 +144,7 @@ export const methodSchemas = {
    */
   similaritySearch: {
     type: 'object',
+    description: 'PREFERRED METHOD FOR FLAVOR-BASED SEARCHES. Use this tool whenever searching for coffees by flavor characteristics like "fruity", "chocolatey", "nutty", "berry", "citrus", etc. This provides more accurate results than text search for flavor profiles.',
     required: ['flavorProfile'],
     properties: {
       flavorProfile: {
@@ -147,7 +152,7 @@ export const methodSchemas = {
         items: {
           type: 'string'
         },
-        description: 'Array of flavor notes to search for similar coffees'
+        description: 'Array of flavor notes to search for similar coffees. Example values: ["chocolate", "berry", "citrus"], ["nutty", "caramel"], etc.'
       },
       maxResults: {
         type: 'integer',

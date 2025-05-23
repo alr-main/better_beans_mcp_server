@@ -11,7 +11,7 @@ import { InvalidParamsError } from './methodRouter.js';
  * Schema for validating coffee roaster search parameters
  */
 const RoasterSearchParamsSchema = z.object({
-  query: z.string().min(1).max(200),
+  query: z.string().min(1).max(200).optional(),
   maxResults: z.number().int().positive().max(100).optional().default(10),
   offset: z.number().int().min(0).optional().default(0)
 });
@@ -34,8 +34,8 @@ export function validateRoasterSearchParams(params: Record<string, any>): Roaste
 
 // Schema for search_coffee_roasters method parameters
 const searchRoastersSchema = z.object({
-  query: z.string().optional(),
-  location: z.string().optional(),
+  query: z.string().optional().or(z.null()),
+  location: z.string().optional().or(z.null()),
   maxResults: z.number().int().min(1).max(50).default(10),
   filters: z.object({
     organic: z.boolean().optional(),
@@ -60,19 +60,25 @@ export async function searchCoffeeRoasters(
   params: any,
   env: Env
 ): Promise<any> {
-  // Validate parameters against schema
-  const validationResult = searchRoastersSchema.safeParse(params);
-  
-  if (!validationResult.success) {
-    throw new InvalidParamsError(validationResult.error.message);
-  }
-  
-  const validParams = validationResult.data;
+  console.error('🔍 searchCoffeeRoasters called with params:', JSON.stringify(params));
   
   try {
+    // Validate parameters against schema
+    const validationResult = searchRoastersSchema.safeParse(params);
+    
+    if (!validationResult.success) {
+      throw new InvalidParamsError(validationResult.error.message);
+    }
+    
+    const validParams = validationResult.data;
+    console.error('✅ Validated params:', JSON.stringify(validParams));
+    
+    // Create Supabase client
+    console.error('🔄 Creating Supabase client with URL:', env.SUPABASE_URL);
     const supabase = getSupabaseClient(env);
     
     // Start building the query
+    console.error('🔄 Building query to search for roasters');
     let query = supabase
       .from('roasters')
       .select(`
@@ -91,12 +97,16 @@ export async function searchCoffeeRoasters(
       .limit(validParams.maxResults);
     
     // Add text search if query parameter is provided
-    if (validParams.query) {
+    if (validParams.query && validParams.query.trim() !== '') {
+      console.error(`🔍 Filtering by query: '${validParams.query}'`);
       query = query.ilike('roaster_name', `%${validParams.query}%`);
+    } else {
+      console.error('🔍 No query filter provided, returning all roasters');
     }
     
     // Add location filter if provided
-    if (validParams.location) {
+    if (validParams.location && validParams.location.trim() !== '') {
+      console.error(`🔍 Filtering by location: '${validParams.location}'`);
       query = query.or(`city.ilike.%${validParams.location}%,state.ilike.%${validParams.location}%`);
     }
     
@@ -107,15 +117,18 @@ export async function searchCoffeeRoasters(
     }
     
     // Execute the query
+    console.error('🔄 Executing Supabase query...');
     const { data, error } = await query;
     
     if (error) {
-      console.error('Error searching roasters:', error);
+      console.error('❌ Error searching roasters:', error);
       throw new Error('Failed to search for roasters');
     }
     
+    console.error(`🔍 Query returned ${data?.length || 0} results:`, JSON.stringify(data));
+    
     // Format the response
-    return {
+    const formattedResponse = {
       roasters: data.map((roaster) => ({
         id: roaster.id,
         name: roaster.roaster_name,
@@ -128,6 +141,9 @@ export async function searchCoffeeRoasters(
       })),
       totalResults: data.length,
     };
+    
+    console.error('✅ Returning formatted response:', JSON.stringify(formattedResponse));
+    return formattedResponse;
   } catch (error) {
     console.error('Error in searchCoffeeRoasters:', error);
     throw error;

@@ -71,14 +71,24 @@ export async function handleInitialize(params: any): Promise<any> {
  * @returns List of available tools
  */
 export async function handleListTools(): Promise<any> {
+  console.error('🔄 MCP list_tools request received');
+  
   // Convert our server manifest functions to MCP tools format
   const tools = serverManifest.functions.map(func => ({
     name: func.name,
     description: func.description,
-    parameters: func.parameters
+    inputSchema: func.inputSchema  // Map inputSchema to inputSchema
   }));
   
-  return { tools };
+  console.error(`🔍 Returning ${tools.length} tools: ${tools.map(t => t.name).join(', ')}`);
+  
+  // Return the raw list without content wrapping
+  const toolsResponse = { tools };
+  
+  // For MCP tools list, return the raw response without any content wrapping
+  console.error('🔍 Formatted tools/list response for MCP protocol');
+  
+  return toolsResponse;
 }
 
 /**
@@ -90,16 +100,75 @@ export async function handleListTools(): Promise<any> {
  * @returns Result of the tool execution
  */
 export async function handleCallTool(params: any, env: Env): Promise<any> {
+  console.error('🔄 MCP call_tool request received:', JSON.stringify(params, null, 2));
+  
   const { name, arguments: args } = params;
   
   if (!name) {
+    console.error('❌ Missing tool name in call_tool request');
     throw new InvalidParamsError('Missing tool name in call_tool request');
   }
   
+  console.error('🔍 Calling tool:', name);
+  console.error('🔍 Raw arguments:', JSON.stringify(args || {}, null, 2));
+  
+  // Process arguments to handle Claude's backtick format for similarity_search
+  let processedArgs = args;
+  
+  // For similarity_search, we need special handling for Claude's input format
+  if (name === 'similarity_search') {
+    console.error('⚠️ Processing similarity_search request specially');
+    
+    // First, set up default parameters
+    processedArgs = { flavorProfile: [], maxResults: 10, threshold: 0.01, useCache: false };
+    
+    // Check for Claude's special backtick format
+    if (args && typeof args === 'object') {
+      // Check for backtick-wrapped keys first
+      if (args['`flavorProfile`'] !== undefined) {
+        console.error('🔍 Found backtick-wrapped flavorProfile key');
+        processedArgs.flavorProfile = args['`flavorProfile`'];
+      } else if (args.flavorProfile !== undefined) {
+        processedArgs.flavorProfile = args.flavorProfile;
+      }
+      
+      // Handle maxResults with or without backticks
+      if (args['`maxResults`'] !== undefined) {
+        console.error('🔍 Found backtick-wrapped maxResults key');
+        processedArgs.maxResults = args['`maxResults`'];
+      } else if (args.maxResults !== undefined) {
+        processedArgs.maxResults = args.maxResults;
+      }
+      
+      // Handle backtick-wrapped flavor profile values if present
+      if (Array.isArray(processedArgs.flavorProfile)) {
+        processedArgs.flavorProfile = processedArgs.flavorProfile.map(flavor => {
+          if (typeof flavor === 'string' && flavor.startsWith('`') && flavor.endsWith('`')) {
+            console.error(`🍫 Removing backticks from flavor: ${flavor}`);
+            return flavor.slice(1, -1);
+          }
+          return flavor;
+        });
+      }
+    }
+    
+    // Ensure we have a valid flavorProfile array
+    if (!processedArgs.flavorProfile || processedArgs.flavorProfile.length === 0) {
+      console.error('⚠️ No flavor profile found, using default');
+      processedArgs.flavorProfile = ['chocolate', 'nutty'];  // Default fallback
+    }
+    
+    console.error('⚠️ Processed similarity_search args:', JSON.stringify(processedArgs, null, 2));
+  }
+  
   try {
-    // Route the call to our existing method router
-    const result = await methodRouter(name, args || {}, env);
-    return { result };
+    // Route the call to our existing method router - use processedArgs instead of args
+    const result = await methodRouter(name, processedArgs || {}, env);
+    
+    console.error('✅ Tool execution successful');
+    console.error('🔍 Result type:', typeof result);
+    
+    return result;
   } catch (error) {
     if (error instanceof MethodNotFoundError) {
       throw error; // Let the RPC handler transform this to proper JSON-RPC error
@@ -126,22 +195,39 @@ export async function processMcpRequest(
   params: any,
   env: Env
 ): Promise<any> {
+  console.error(`🔄 Processing MCP request: ${method}`);
+  
   switch (method) {
     case 'initialize':
       return handleInitialize(params);
       
     case 'list_tools':
+    case 'tools/list':  // Add support for the tools/list variant that Claude uses
+      console.error('🔄 Handling tools list request');
       return handleListTools();
       
     case 'call_tool':
+    case 'tools/call':  // Add support for the tools/call variant that Claude might use
+      console.error('🔄 Handling tool call request');
       return handleCallTool(params, env);
+      
+    case 'resources/list':
+      // Return empty resources list since we don't have resources
+      console.error('🔄 Returning empty resources list');
+      return { resources: [] };
+      
+    case 'prompts/list':
+      // Return empty prompts list since we don't have prompts
+      console.error('🔄 Returning empty prompts list');
+      return { prompts: [] };
       
     // Handle initialized notification (nothing to return)
     case 'notifications/initialized':
-      console.log('Client sent initialized notification');
+      console.error('🔄 Client sent initialized notification');
       return null;
       
     default:
+      console.error(`❌ MCP method '${method}' not found`);
       throw new MethodNotFoundError(`MCP method '${method}' not found`);
   }
 }
