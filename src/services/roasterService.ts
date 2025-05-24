@@ -4,8 +4,8 @@
  */
 import { z } from 'zod';
 import { Env } from '../index.js';
-import { getSupabaseClient } from '../database/supabaseClient.js';
 import { InvalidParamsError } from './methodRouter.js';
+import { secureQuery, secureReadSingle, UserRole, OperationType } from '../database/secureQuery.js';
 
 /**
  * Schema for validating coffee roaster search parameters
@@ -73,28 +73,26 @@ export async function searchCoffeeRoasters(
     const validParams = validationResult.data;
     console.error('✅ Validated params:', JSON.stringify(validParams));
     
-    // Create Supabase client
-    console.error('🔄 Creating Supabase client with URL:', env.SUPABASE_URL);
-    const supabase = getSupabaseClient(env);
-    
-    // Start building the query
-    console.error('🔄 Building query to search for roasters');
-    let query = supabase
-      .from('roasters')
-      .select(`
-        id,
-        roaster_name,
-        city,
-        state,
-        founded_year,
-        about_us,
-        website_url,
-        logo_url,
-        is_featured
-      `)
-      .eq('is_active', true)
-      .order('is_featured', { ascending: false })
-      .limit(validParams.maxResults);
+    console.error('🔄 Using secure query pipeline');
+    return await secureQuery(env, UserRole.ANONYMOUS, 'roasters', OperationType.READ, async (supabase) => {
+      // Start building the query
+      console.error('🔄 Building query to search for roasters');
+      let query = supabase
+        .from('roasters')
+        .select(`
+          id,
+          roaster_name,
+          city,
+          state,
+          founded_year,
+          about_us,
+          website_url,
+          logo_url,
+          is_featured
+        `)
+        .eq('is_active', true)
+        .order('is_featured', { ascending: false })
+        .limit(validParams.maxResults);
     
     // Add text search if query parameter is provided
     if (validParams.query && validParams.query.trim() !== '') {
@@ -116,34 +114,35 @@ export async function searchCoffeeRoasters(
       // For demonstration, assuming these are implemented as columns or related tables
     }
     
-    // Execute the query
-    console.error('🔄 Executing Supabase query...');
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error('❌ Error searching roasters:', error);
-      throw new Error('Failed to search for roasters');
-    }
-    
-    console.error(`🔍 Query returned ${data?.length || 0} results:`, JSON.stringify(data));
-    
-    // Format the response
-    const formattedResponse = {
-      roasters: data.map((roaster) => ({
-        id: roaster.id,
-        name: roaster.roaster_name,
-        location: roaster.city && roaster.state ? `${roaster.city}, ${roaster.state}` : null,
-        foundedYear: roaster.founded_year,
-        description: roaster.about_us,
-        websiteUrl: roaster.website_url,
-        logoUrl: roaster.logo_url,
-        isFeatured: roaster.is_featured,
-      })),
-      totalResults: data.length,
-    };
-    
-    console.error('✅ Returning formatted response:', JSON.stringify(formattedResponse));
-    return formattedResponse;
+      // Execute the query
+      console.error('🔄 Executing Supabase query...');
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('❌ Error searching roasters:', error);
+        throw new Error('Failed to search for roasters');
+      }
+      
+      console.error(`🔍 Query returned ${data?.length || 0} results:`, JSON.stringify(data));
+      
+      // Format the response
+      const formattedResponse = {
+        roasters: data.map((roaster) => ({
+          id: roaster.id,
+          name: roaster.roaster_name,
+          location: roaster.city && roaster.state ? `${roaster.city}, ${roaster.state}` : null,
+          foundedYear: roaster.founded_year,
+          description: roaster.about_us,
+          websiteUrl: roaster.website_url,
+          logoUrl: roaster.logo_url,
+          isFeatured: roaster.is_featured,
+        })),
+        totalResults: data.length,
+      };
+      
+      console.error('✅ Returning formatted response:', JSON.stringify(formattedResponse));
+      return formattedResponse;
+    });
   } catch (error) {
     console.error('Error in searchCoffeeRoasters:', error);
     throw error;
@@ -170,45 +169,52 @@ export async function getRoasterDetails(
   const validParams = validationResult.data;
   
   try {
-    const supabase = getSupabaseClient(env);
-    
-    // Get the roaster details
-    const { data: roaster, error: roasterError } = await supabase
-      .from('roasters')
-      .select('*')
-      .eq('id', validParams.roasterId)
-      .eq('is_active', true)
-      .single();
-    
-    if (roasterError) {
-      console.error('Error fetching roaster details:', roasterError);
-      throw new Error('Failed to fetch roaster details');
-    }
+    // Get the roaster details using secure query pipeline
+    const roaster = await secureReadSingle(
+      env, 
+      UserRole.ANONYMOUS, 
+      'roasters', 
+      '*',
+      { 
+        id: validParams.roasterId,
+        is_active: true 
+      }
+    );
     
     if (!roaster) {
       throw new InvalidParamsError('Roaster not found');
     }
     
-    // Get the roaster's coffees
-    const { data: coffees, error: coffeesError } = await supabase
-      .from('coffees')
-      .select(`
-        id,
-        coffee_name,
-        roast_level,
-        process_method,
-        price,
-        image_url,
-        is_available
-      `)
-      .eq('roaster_id', validParams.roasterId)
-      .eq('is_available', true)
-      .order('coffee_name');
-    
-    if (coffeesError) {
-      console.error('Error fetching roaster coffees:', coffeesError);
-      throw new Error('Failed to fetch roaster coffees');
-    }
+    // Get the roaster's coffees using secure query pipeline
+    const coffees = await secureQuery(
+      env,
+      UserRole.ANONYMOUS,
+      'coffees',
+      OperationType.READ,
+      async (supabase) => {
+        const { data, error } = await supabase
+          .from('coffees')
+          .select(`
+            id,
+            coffee_name,
+            roast_level,
+            process_method,
+            price,
+            image_url,
+            is_available
+          `)
+          .eq('roaster_id', validParams.roasterId)
+          .eq('is_available', true)
+          .order('coffee_name');
+          
+        if (error) {
+          console.error('Error fetching roaster coffees:', error);
+          throw new Error('Failed to fetch roaster coffees');
+        }
+        
+        return data;
+      }
+    );
     
     // Format the response
     return {

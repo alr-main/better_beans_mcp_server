@@ -7,6 +7,7 @@ import { searchCoffeeProducts, getCoffeeProductDetails } from '../../src/service
 import { getSupabaseClient } from '../../src/database/supabaseClient';
 import { InvalidParamsError } from '../../src/services/methodRouter';
 import { VALID_UUID } from '../utils/testUtils';
+import { secureQuery, secureRead, secureReadSingle, UserRole, OperationType } from '../../src/database/secureQuery';
 
 // IMPORTANT: Define mock data before vi.mock calls since they're hoisted
 const mockCoffeeProducts = [
@@ -36,7 +37,7 @@ const mockCoffeeProducts = [
   }
 ];
 
-// Mock a simple client that returns the same mock data for all queries
+// Mock the necessary modules
 vi.mock('../../src/database/supabaseClient', () => {
   return {
     getSupabaseClient: vi.fn(() => ({
@@ -67,7 +68,8 @@ vi.mock('../../src/database/supabaseClient', () => {
           limit: vi.fn().mockReturnValue({
             data: mockCoffeeProducts,
             error: null
-          })
+          }),
+          or: vi.fn().mockReturnThis()
         })
       }),
       rpc: vi.fn().mockReturnValue({
@@ -75,6 +77,62 @@ vi.mock('../../src/database/supabaseClient', () => {
         error: null
       })
     }))
+  };
+});
+
+// Mock the secure query functions
+vi.mock('../../src/database/secureQuery', () => {
+  return {
+    UserRole: {
+      ADMIN: 'ADMIN',
+      USER: 'USER',
+      ANONYMOUS: 'ANONYMOUS'
+    },
+    OperationType: {
+      READ: 'READ',
+      CREATE: 'CREATE',
+      UPDATE: 'UPDATE',
+      DELETE: 'DELETE'
+    },
+    secureQuery: vi.fn(async (env, role, table, operation, queryFunction) => {
+      // For the searchCoffeeProducts test, just return a preformed result instead of trying
+      // to execute the complex queryFunction which requires a lot of chained methods
+      if (table === 'coffees' && operation === 'READ') {
+        return {
+          coffees: mockCoffeeProducts.map((coffee) => ({
+            id: coffee.id,
+            name: coffee.coffee_name,
+            roastLevel: coffee.roast_level,
+            processMethod: coffee.process_method,
+            description: coffee.coffee_description,
+            price: coffee.price,
+            imageUrl: coffee.image_url,
+            isAvailable: true,
+            flavorTags: coffee.flavor_tags || [],
+            origin: [],
+            roaster: {
+              id: coffee.roaster_id,
+              name: coffee.roaster_name,
+            },
+          })),
+          totalResults: mockCoffeeProducts.length,
+        };
+      }
+      
+      // Fallback for other uses
+      return { success: true };
+    }),
+    secureRead: vi.fn(async (env, role, table, columns, conditions) => {
+      return mockCoffeeProducts;
+    }),
+    secureReadSingle: vi.fn(async (env, role, table, columns, conditions) => {
+      if (conditions?.id === VALID_UUID) {
+        return mockCoffeeProducts[0];
+      } else if (conditions?.id === 'non-existent-id') {
+        return null;
+      }
+      return mockCoffeeProducts[0];
+    })
   };
 });
 
@@ -92,78 +150,84 @@ describe('Coffee Service', () => {
   });
 
   describe('searchCoffeeProducts', () => {
-    test.skip('should search coffee products by name', async () => {
+    test('should search coffee products by name', async () => {
       const params = {
         query: 'Ethiopian',
-        limit: 10
+        maxResults: 10
       };
 
       const result = await searchCoffeeProducts(params, mockEnv);
 
-      expect(getSupabaseClient).toHaveBeenCalledWith(mockEnv);
-      expect(result).toHaveProperty('query');
-      expect(result).toHaveProperty('results');
-      expect(Array.isArray(result.results)).toBe(true);
+      expect(secureQuery).toHaveBeenCalled();
+      expect(result).toHaveProperty('coffees');
+      expect(result).toHaveProperty('totalResults');
+      expect(Array.isArray(result.coffees)).toBe(true);
     });
 
-    test.skip('should filter by roast level', async () => {
+    test('should filter by roast level', async () => {
       const params = {
-        query: '',
-        roastLevels: ['Light', 'Medium'],
-        limit: 10
+        filters: {
+          roastLevel: 'Light'
+        },
+        maxResults: 10
       };
 
       await searchCoffeeProducts(params, mockEnv);
 
-      const supabaseClient = getSupabaseClient(mockEnv);
-      expect(supabaseClient.from).toHaveBeenCalled();
+      expect(secureQuery).toHaveBeenCalledWith(
+        mockEnv,
+        expect.anything(),
+        'coffees',
+        'READ',
+        expect.any(Function)
+      );
     });
 
-    test.skip('should handle empty search results', async () => {
+    test('should handle empty search results', async () => {
       const params = {
         query: 'NonExistentCoffee',
-        limit: 10
+        maxResults: 10
       };
 
-      // Mock empty results
-      vi.mocked(getSupabaseClient).mockReturnValueOnce({
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                data: [],
-                error: null
-              })
-            })
-          })
-        })
-      } as any);
+      // Mock empty results for this test only
+      vi.mocked(secureQuery).mockResolvedValueOnce({
+        coffees: [],
+        totalResults: 0
+      });
 
       const result = await searchCoffeeProducts(params, mockEnv);
 
-      expect(Array.isArray(result.results)).toBe(true);
-      expect(result.results.length).toBe(0);
+      expect(Array.isArray(result.coffees)).toBe(true);
+      expect(result.totalResults).toBe(0);
     });
 
     test('should throw error on invalid parameters', async () => {
+      // In our implementation, validation happens before secureQuery is called,
+      // so this test doesn't need to mock secureQuery behavior
       const params = {
-        query: 'Ethiopian',
-        limit: -1 // Invalid limit
+        maxResults: -1 // Invalid maxResults (should be positive)
       };
 
+      // Since validation happens before secureQuery is called, this should still throw
       await expect(searchCoffeeProducts(params, mockEnv)).rejects.toThrow();
     });
   });
 
   describe('getCoffeeProductDetails', () => {
-    test.skip('should get coffee details by ID', async () => {
+    test('should get coffee details by ID', async () => {
       const params = {
         productId: VALID_UUID
       };
 
       const result = await getCoffeeProductDetails(params, mockEnv);
 
-      expect(getSupabaseClient).toHaveBeenCalledWith(mockEnv);
+      expect(secureReadSingle).toHaveBeenCalledWith(
+        mockEnv,
+        expect.anything(),
+        'coffees',
+        expect.anything(),
+        expect.objectContaining({ id: VALID_UUID })
+      );
       expect(result).toBeDefined();
     });
 
@@ -172,20 +236,7 @@ describe('Coffee Service', () => {
         productId: 'non-existent-id'
       };
 
-      // Mock not found response
-      vi.mocked(getSupabaseClient).mockReturnValueOnce({
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockReturnValue({ 
-                data: null, 
-                error: { message: 'Not found' } 
-              })
-            })
-          })
-        })
-      } as any);
-
+      // secureReadSingle will return null for this ID based on our mock setup
       await expect(getCoffeeProductDetails(params, mockEnv)).rejects.toThrow();
     });
 

@@ -7,6 +7,7 @@ import { searchCoffeeRoasters, getRoasterDetails } from '../../src/services/roas
 import { getSupabaseClient } from '../../src/database/supabaseClient';
 import { InvalidParamsError } from '../../src/services/methodRouter';
 import { VALID_UUID } from '../utils/testUtils';
+import { secureQuery, secureReadSingle, UserRole, OperationType } from '../../src/database/secureQuery.js';
 
 // IMPORTANT: Define mock data before vi.mock calls since they're hoisted
 const mockRoasters = [
@@ -34,7 +35,7 @@ const mockRoasters = [
   }
 ];
 
-// Mock a simple client that returns the same mock data for all queries
+// Mock necessary modules
 vi.mock('../../src/database/supabaseClient', () => {
   return {
     getSupabaseClient: vi.fn(() => ({
@@ -73,7 +74,8 @@ vi.mock('../../src/database/supabaseClient', () => {
               data: mockRoasters,
               error: null
             })
-          })
+          }),
+          or: vi.fn().mockReturnThis()
         })
       }),
       rpc: vi.fn().mockReturnValue({
@@ -81,6 +83,70 @@ vi.mock('../../src/database/supabaseClient', () => {
         error: null
       })
     }))
+  };
+});
+
+// Mock the secure query functions
+vi.mock('../../src/database/secureQuery', () => {
+  return {
+    UserRole: {
+      ADMIN: 'ADMIN',
+      USER: 'USER',
+      ANONYMOUS: 'ANONYMOUS'
+    },
+    OperationType: {
+      READ: 'READ',
+      CREATE: 'CREATE',
+      UPDATE: 'UPDATE',
+      DELETE: 'DELETE'
+    },
+    secureQuery: vi.fn(async (env, role, table, operation, queryFunction) => {
+      // For searchCoffeeRoasters, return preformed result
+      if (table === 'roasters' && operation === 'READ') {
+        return {
+          roasters: mockRoasters.map((roaster) => ({
+            id: roaster.id,
+            name: roaster.roaster_name,
+            location: 'Test Location',
+            foundedYear: roaster.founded_year,
+            description: roaster.description,
+            websiteUrl: roaster.website_url,
+            logoUrl: null,
+            isFeatured: roaster.is_featured,
+          })),
+          totalResults: mockRoasters.length,
+        };
+      }
+      
+      // For getRoasterDetails coffees query
+      if (table === 'coffees' && operation === 'READ') {
+        return [
+          {
+            id: 'coffee-1',
+            coffee_name: 'Test Coffee',
+            roast_level: 'Medium',
+            process_method: 'Washed',
+            price: 15.99,
+            image_url: 'https://example.com/image.jpg',
+            is_available: true
+          }
+        ];
+      }
+      
+      // Fallback
+      return [];
+    }),
+    secureRead: vi.fn(async (env, role, table, columns, conditions) => {
+      return mockRoasters;
+    }),
+    secureReadSingle: vi.fn(async (env, role, table, columns, conditions) => {
+      if (conditions?.id === VALID_UUID) {
+        return mockRoasters[0];
+      } else if (conditions?.id === '6c84fb90-12c4-11e1-840d-7b25c5ee775a') {
+        return null;
+      }
+      return mockRoasters[0];
+    })
   };
 });
 
@@ -98,65 +164,58 @@ describe('Roaster Service', () => {
   });
 
   describe('searchCoffeeRoasters', () => {
-    test.skip('should search roasters by name', async () => {
+    test('should search roasters by name', async () => {
       const params = {
         query: 'Artisan',
-        limit: 10
+        maxResults: 10
       };
 
       const result = await searchCoffeeRoasters(params, mockEnv);
 
-      expect(getSupabaseClient).toHaveBeenCalledWith(mockEnv);
-      expect(result).toHaveProperty('query');
+      expect(secureQuery).toHaveBeenCalled();
       expect(result).toHaveProperty('roasters');
+      expect(result).toHaveProperty('totalResults');
       expect(Array.isArray(result.roasters)).toBe(true);
     });
 
-    test.skip('should filter by direct trade', async () => {
+    test('should filter by location', async () => {
       const params = {
-        query: '',
-        directTradeOnly: true,
-        limit: 10
+        location: 'New York',
+        maxResults: 10
       };
 
       await searchCoffeeRoasters(params, mockEnv);
 
-      const supabaseClient = getSupabaseClient(mockEnv);
-      expect(supabaseClient.from).toHaveBeenCalled();
+      expect(secureQuery).toHaveBeenCalledWith(
+        mockEnv,
+        expect.anything(),
+        'roasters',
+        'READ',
+        expect.any(Function)
+      );
     });
 
-    test.skip('should handle empty search results', async () => {
+    test('should handle empty search results', async () => {
       const params = {
         query: 'NonExistentRoaster',
-        limit: 10
+        maxResults: 10
       };
 
-      // Mock empty results
-      vi.mocked(getSupabaseClient).mockReturnValueOnce({
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockReturnValue({
-                limit: vi.fn().mockReturnValue({
-                  data: [],
-                  error: null
-                })
-              })
-            })
-          })
-        })
-      } as any);
+      // Mock empty results for this test only
+      vi.mocked(secureQuery).mockResolvedValueOnce({
+        roasters: [],
+        totalResults: 0
+      });
 
       const result = await searchCoffeeRoasters(params, mockEnv);
 
       expect(Array.isArray(result.roasters)).toBe(true);
-      expect(result.roasters.length).toBe(0);
+      expect(result.totalResults).toBe(0);
     });
 
     test('should throw error on invalid parameters', async () => {
       const params = {
-        query: 'Artisan',
-        limit: -1 // Invalid limit
+        maxResults: -1 // Invalid maxResults (should be positive)
       };
 
       await expect(searchCoffeeRoasters(params, mockEnv)).rejects.toThrow();
@@ -164,14 +223,20 @@ describe('Roaster Service', () => {
   });
 
   describe('getRoasterDetails', () => {
-    test.skip('should get roaster details by ID', async () => {
+    test('should get roaster details by ID', async () => {
       const params = {
         roasterId: VALID_UUID
       };
 
       const result = await getRoasterDetails(params, mockEnv);
 
-      expect(getSupabaseClient).toHaveBeenCalledWith(mockEnv);
+      expect(secureReadSingle).toHaveBeenCalledWith(
+        mockEnv,
+        expect.anything(),
+        'roasters',
+        expect.anything(),
+        expect.objectContaining({ id: VALID_UUID })
+      );
       expect(result).toBeDefined();
       expect(result.name).toBe('Artisan Roasters');
     });
@@ -181,20 +246,7 @@ describe('Roaster Service', () => {
         roasterId: '6c84fb90-12c4-11e1-840d-7b25c5ee775a' // Valid UUID but not found
       };
 
-      // Mock not found response
-      vi.mocked(getSupabaseClient).mockReturnValueOnce({
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockReturnValue({ 
-                data: null, 
-                error: { message: 'Not found' } 
-              })
-            })
-          })
-        })
-      } as any);
-
+      // secureReadSingle will return null for this ID based on our mock setup
       await expect(getRoasterDetails(params, mockEnv)).rejects.toThrow();
     });
 

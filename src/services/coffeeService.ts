@@ -4,8 +4,8 @@
  */
 import { z } from 'zod';
 import { Env } from '../index.js';
-import { getSupabaseClient } from '../database/supabaseClient.js';
 import { InvalidParamsError } from './methodRouter.js';
+import { secureQuery, secureRead, secureReadSingle, UserRole, OperationType } from '../database/secureQuery.js';
 
 // Schema for search_coffee_products method parameters
 const searchCoffeeProductsSchema = z.object({
@@ -46,26 +46,27 @@ export async function searchCoffeeProducts(
   const validParams = validationResult.data;
   
   try {
-    const supabase = getSupabaseClient(env);
-    
-    // Start building the query
-    let query = supabase
-      .from('coffees')
-      .select(`
-        id,
-        coffee_name,
-        roast_level,
-        process_method,
-        coffee_description,
-        price,
-        image_url,
-        is_available,
-        flavor_tags,
-        origin,
-        roasters(id, roaster_name)
-      `)
-      .eq('is_available', true)
-      .limit(validParams.maxResults);
+    // We'll use the secure query pipeline with custom function to handle the complex query
+    // Since this is a read operation, we'll use the ANONYMOUS role
+    return await secureQuery(env, UserRole.ANONYMOUS, 'coffees', OperationType.READ, async (supabase) => {
+      // Start building the query
+      let query = supabase
+        .from('coffees')
+        .select(`
+          id,
+          coffee_name,
+          roast_level,
+          process_method,
+          coffee_description,
+          price,
+          image_url,
+          is_available,
+          flavor_tags,
+          origin,
+          roasters(id, roaster_name)
+        `)
+        .eq('is_available', true)
+        .limit(validParams.maxResults);
     
     // Add text search if query parameter is provided
     if (validParams.query) {
@@ -108,34 +109,35 @@ export async function searchCoffeeProducts(
       }
     }
     
-    // Execute the query
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error('Error searching coffee products:', error);
-      throw new Error('Failed to search for coffee products');
-    }
-    
-    // Format the response
-    return {
-      coffees: data.map((coffee) => ({
-        id: coffee.id,
-        name: coffee.coffee_name,
-        roastLevel: coffee.roast_level,
-        processMethod: coffee.process_method,
-        description: coffee.coffee_description,
-        price: coffee.price,
-        imageUrl: coffee.image_url,
-        isAvailable: coffee.is_available,
-        flavorTags: coffee.flavor_tags || [],
-        origin: coffee.origin || [],
-        roaster: {
-          id: (coffee.roasters as any)?.id || null,
-          name: (coffee.roasters as any)?.roaster_name || null,
-        },
-      })),
-      totalResults: data.length,
-    };
+      // Execute the query
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error searching coffee products:', error);
+        throw new Error('Failed to search for coffee products');
+      }
+      
+      // Format the response
+      return {
+        coffees: data.map((coffee) => ({
+          id: coffee.id,
+          name: coffee.coffee_name,
+          roastLevel: coffee.roast_level,
+          processMethod: coffee.process_method,
+          description: coffee.coffee_description,
+          price: coffee.price,
+          imageUrl: coffee.image_url,
+          isAvailable: coffee.is_available,
+          flavorTags: coffee.flavor_tags || [],
+          origin: coffee.origin || [],
+          roaster: {
+            id: (coffee.roasters as any)?.id || null,
+            name: (coffee.roasters as any)?.roaster_name || null,
+          },
+        })),
+        totalResults: data.length,
+      };
+    });
   } catch (error) {
     console.error('Error in searchCoffeeProducts:', error);
     throw error;
@@ -162,23 +164,20 @@ export async function getCoffeeProductDetails(
   const validParams = validationResult.data;
   
   try {
-    const supabase = getSupabaseClient(env);
-    
-    // Get the coffee product details
-    const { data: coffee, error } = await supabase
-      .from('coffees')
-      .select(`
+    // Use secureReadSingle for fetching a single coffee product with secure pipeline
+    const coffee = await secureReadSingle(
+      env,
+      UserRole.ANONYMOUS,
+      'coffees',
+      `
         *,
         roasters(id, roaster_name, city, state, logo_url)
-      `)
-      .eq('id', validParams.productId)
-      .eq('is_available', true)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching coffee product details:', error);
-      throw new Error('Failed to fetch coffee product details');
-    }
+      `,
+      { 
+        id: validParams.productId,
+        is_available: true
+      }
+    );
     
     if (!coffee) {
       throw new InvalidParamsError('Coffee product not found');

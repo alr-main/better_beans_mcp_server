@@ -1,12 +1,14 @@
 /**
  * Better Vector Search Service
  * A simplified, robust implementation of vector search for coffee products
+ * Uses the secure query pipeline for all database operations
  */
 import { Env } from '../index.js';
-import { getSupabaseClient } from '../database/supabaseClient.js';
+import { secureQuery, UserRole, OperationType } from '../database/secureQuery.js';
 
 /**
  * Performs a vector search for coffees matching the given flavor profile
+ * Uses the secure query pipeline for all database operations
  * @param flavorProfile The flavor profile to search for
  * @param maxResults Maximum number of results to return
  * @param env Environment variables
@@ -18,66 +20,76 @@ export async function directVectorSearch(
   env: Env
 ): Promise<any> {
   try {
-    // Get Supabase client
-    const supabase = getSupabaseClient(env);
+    // Log that we're starting a vector search
+    console.log(`Starting vector search for flavor profile: [${flavorProfile.join(', ')}]`);
     
-    // Define similarity threshold
-    const threshold = 0.3;
+    // Use secureQuery for RPC calls
+    // We're using 'coffees' as the table name for permissions check, though this is an RPC call
+    return await secureQuery(env, UserRole.ANONYMOUS, 'coffees', OperationType.READ, async (supabase) => {
+      // Define similarity threshold
+      const threshold = 0.3;
+      
+      // Use database function for vector search with embedding generation
+      const { data, error } = await supabase.rpc('search_coffee_by_flavor_tags_vector', {
+        search_tags: flavorProfile,
+        match_threshold: threshold,
+        match_count: maxResults,
+        match_offset: 0
+      });
     
-    // Use database function for vector search with embedding generation
-    const { data, error } = await supabase.rpc('search_coffee_by_flavor_tags_vector', {
-      search_tags: flavorProfile,
-      match_threshold: threshold,
-      match_count: maxResults,
-      match_offset: 0
+      // Handle errors with fallback
+      if (error) {
+        console.error(`Vector search error: ${error.message}`);
+        return await textBasedSearch(flavorProfile, maxResults, env);
+      }
+      
+      // If no results, fall back to text search
+      if (!data || data.length === 0) {
+        console.log('No results from vector search, falling back to text search');
+        return await textBasedSearch(flavorProfile, maxResults, env);
+      }
+      
+      console.log(`Vector search found ${data.length} results`);
+    
+      // Format the results consistently
+      const results = data.map(product => ({
+        coffee: {
+          id: product.id,
+          name: product.name,
+          roastLevel: product.roast_level,
+          processMethod: product.process_method,
+          description: product.description,
+          price: product.price,
+          imageUrl: product.image_url,
+          productUrl: product.product_url,
+          flavorTags: product.flavor_tags || [],
+          isAvailable: true,
+          origin: [], // Not available in this query
+          roaster: {
+            id: product.roaster_id,
+            name: product.roaster_name
+          }
+        },
+        similarityScore: Number(product.similarity),
+        matchingTags: (product.flavor_tags || []).filter(tag => 
+          flavorProfile.some(searchTag =>
+            tag.toLowerCase().includes(searchTag.toLowerCase()) || 
+            searchTag.toLowerCase().includes(tag.toLowerCase())
+          )
+        ),
+        distance: 1 - Number(product.similarity),
+        searchType: 'vector'
+      }));
+      
+      const formattedResult = {
+        query: { flavorProfile },
+        results: results.slice(0, maxResults),
+        totalResults: data.length
+      };
+      
+      console.log('Returning formatted vector search results');
+      return formattedResult;
     });
-    
-    // Handle errors with fallback
-    if (error) {
-      console.error(`Vector search error: ${error.message}`);
-      return await textBasedSearch(flavorProfile, maxResults, env);
-    }
-    
-    // If no results, fall back to text search
-    if (!data || data.length === 0) {
-      return await textBasedSearch(flavorProfile, maxResults, env);
-    }
-    
-    // Format the results consistently
-    const results = data.map(product => ({
-      coffee: {
-        id: product.id,
-        name: product.name,
-        roastLevel: product.roast_level,
-        processMethod: product.process_method,
-        description: product.description,
-        price: product.price,
-        imageUrl: product.image_url,
-        productUrl: product.product_url,
-        flavorTags: product.flavor_tags || [],
-        isAvailable: true,
-        origin: [], // Not available in this query
-        roaster: {
-          id: product.roaster_id,
-          name: product.roaster_name
-        }
-      },
-      similarityScore: Number(product.similarity),
-      matchingTags: (product.flavor_tags || []).filter(tag => 
-        flavorProfile.some(searchTag =>
-          tag.toLowerCase().includes(searchTag.toLowerCase()) || 
-          searchTag.toLowerCase().includes(tag.toLowerCase())
-        )
-      ),
-      distance: 1 - Number(product.similarity),
-      searchType: 'vector'
-    }));
-    
-    return {
-      query: { flavorProfile },
-      results: results.slice(0, maxResults),
-      totalResults: data.length
-    };
   } catch (error) {
     console.error('Error in direct vector search:', error);
     return await textBasedSearch(flavorProfile, maxResults, env);
@@ -86,6 +98,7 @@ export async function directVectorSearch(
 
 /**
  * Performs a text-based search as a fallback
+ * Uses the secure query pipeline for all database operations
  * @param flavorProfile The flavor profile to search for
  * @param maxResults Maximum number of results to return
  * @param env Environment variables
@@ -97,25 +110,27 @@ async function textBasedSearch(
   env: Env
 ): Promise<any> {
   try {
-    const supabase = getSupabaseClient(env);
+    console.log(`Starting text-based fallback search for flavor profile: [${flavorProfile.join(', ')}]`);
     
-    // Fetch all coffees and filter locally
-    // This is a fallback approach only used when vector search fails
-    const { data: allCoffees, error } = await supabase
-      .from('coffee_products')
-      .select(`
-        id,
-        coffee_name,
-        roast_level,
-        process_method,
-        coffee_description,
-        price,
-        image_url,
-        product_url,
-        flavor_tags,
-        is_featured,
-        roasters (id, roaster_name)
-      `);
+    // Use secureQuery for database access
+    return await secureQuery(env, UserRole.ANONYMOUS, 'coffees', OperationType.READ, async (supabase) => {
+      // Fetch all coffees and filter locally
+      // This is a fallback approach only used when vector search fails
+      const { data: allCoffees, error } = await supabase
+        .from('coffees') // Using the correct table name 'coffees' instead of 'coffee_products'
+        .select(`
+          id,
+          coffee_name,
+          roast_level,
+          process_method,
+          coffee_description,
+          price,
+          image_url,
+          product_url,
+          flavor_tags,
+          is_featured,
+          roasters (id, roaster_name)
+        `);
       
     if (error) {
       console.error(`Error fetching coffees: ${error.message}`);
@@ -145,8 +160,8 @@ async function textBasedSearch(
       roasters: { id: string; roaster_name: string };
     };
 
-    // Score each coffee based on flavor tag matches
-    const scoredCoffees = (allCoffees as unknown as CoffeeRecord[]).map(coffee => {
+      // Score each coffee based on flavor tag matches
+      const scoredCoffees = (allCoffees as unknown as CoffeeRecord[]).map(coffee => {
       // Normalize flavor tags for matching
       const normalizedCoffeeTags = (coffee.flavor_tags || []).map(tag => tag.toLowerCase());
       const normalizedSearchTags = flavorProfile.map(tag => tag.toLowerCase());
@@ -194,20 +209,23 @@ async function textBasedSearch(
         distance: 1 - similarityScore,
         searchType: 'text'
       };
+      });
+      
+      // Sort by similarity score (highest first)
+      scoredCoffees.sort((a, b) => b.similarityScore - a.similarityScore);
+      
+      // Return the top results
+      const topResults = scoredCoffees.slice(0, maxResults);
+      
+      return {
+        query: { flavorProfile },
+        results: topResults,
+        totalResults: scoredCoffees.length
+      };
+      
     });
-    
-    // Sort by similarity score (highest first)
-    scoredCoffees.sort((a, b) => b.similarityScore - a.similarityScore);
-    
-    // Return the top results
-    const topResults = scoredCoffees.slice(0, maxResults);
-    
-    return {
-      query: { flavorProfile },
-      results: topResults,
-      totalResults: scoredCoffees.length
-    };
   } catch (error) {
+    // Return error information that will be included in the response
     return {
       query: { flavorProfile },
       results: [],
