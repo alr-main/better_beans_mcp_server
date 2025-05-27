@@ -12,7 +12,7 @@ export const methodSchemas = {
    */
   searchCoffeeRoasters: {
     type: 'object',
-    description: 'Find coffee roasters based on search criteria. To list all roasters, omit the query parameter or leave it empty. For targeted searches, use terms like "coffee", "roast", or city names like "Portland".',
+    description: 'Find coffee roasters based on search criteria. To list all roasters, omit the query parameter or leave it empty. For targeted searches, use terms like "coffee", "roast", or city names like "Portland". For location-based searches, you can use either a text location or precise coordinates.',
     properties: {
       query: {
         type: 'string',
@@ -20,7 +20,32 @@ export const methodSchemas = {
       },
       location: {
         type: 'string',
-        description: 'Geographic location to search within'
+        description: 'Text-based geographic location to search within (e.g., "Portland", "New York")'
+      },
+      coordinates: {
+        type: 'object',
+        description: 'Precise geographic coordinates for finding nearby roasters',
+        properties: {
+          latitude: {
+            type: 'number',
+            minimum: -90,
+            maximum: 90,
+            description: 'Latitude coordinate (between -90 and 90)'
+          },
+          longitude: {
+            type: 'number',
+            minimum: -180,
+            maximum: 180,
+            description: 'Longitude coordinate (between -180 and 180)'
+          },
+          radiusMiles: {
+            type: 'number',
+            minimum: 1,
+            maximum: 500,
+            default: 60,
+            description: 'Search radius in miles (1-500, default 60)'
+          }
+        }
       },
       maxResults: {
         type: 'integer',
