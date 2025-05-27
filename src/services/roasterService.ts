@@ -103,14 +103,11 @@ export async function searchCoffeeRoasters(
         // Add distance calculation if coordinates are provided
         if (validParams.coordinates) {
           const { latitude, longitude } = validParams.coordinates;
-          // Use PostgreSQL earthdistance extension with the earth_distance function
-          // This requires cube and earthdistance extensions to be enabled
-          // earth_distance returns meters, so we convert to miles
+          
+          // Use a calculated field compatible with PostgREST while still using earthdistance
+          // We use a known pattern that PostgREST can parse correctly
           selectQuery += `,
-            earth_distance(
-              ll_to_earth(${latitude}, ${longitude}),
-              ll_to_earth(latitude, longitude)
-            ) * 0.000621371 AS distance_miles,
+            calculate_distance(latitude, longitude, ${latitude}, ${longitude}) AS distance_miles,
             -- Also add the raw coordinates to the result for reference
             latitude,
             longitude`;
