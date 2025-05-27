@@ -81,125 +81,134 @@ export async function searchCoffeeRoasters(
     
     console.error('🔄 Using secure query pipeline');
     return await secureQuery(env, UserRole.ANONYMOUS, 'roasters', OperationType.READ, async (supabase) => {
-      // Start building the query
-      console.error('🔄 Building query to search for roasters');
-      
-      // Initialize select columns, adding geospatial calculations if needed
-      let selectQuery = `
-        id,
-        roaster_name,
-        city,
-        state,
-        latitude,
-        longitude,
-        founded_year,
-        about_us,
-        website_url,
-        logo_url,
-        is_featured
-      `;
-      
-      // Add distance calculation if coordinates are provided
-      if (validParams.coordinates) {
-        const { latitude, longitude } = validParams.coordinates;
-        // Use PostgreSQL earthdistance extension with point operator
-        // This requires the earthdistance and cube extensions to be enabled
-        // The <@> operator returns distance in miles
-        selectQuery += `,
-          point(longitude, latitude) <@> point(${longitude}, ${latitude}) AS distance_miles,
-          -- Also add the raw coordinates to the result for reference
+      try {
+        // Start building the query
+        console.error('🔄 Building query to search for roasters');
+        
+        // Initialize select columns, adding geospatial calculations if needed
+        let selectQuery = `
+          id,
+          roaster_name,
+          city,
+          state,
           latitude,
-          longitude`;
+          longitude,
+          founded_year,
+          about_us,
+          website_url,
+          logo_url,
+          is_featured
+        `;
+        
+        // Add distance calculation if coordinates are provided
+        if (validParams.coordinates) {
+          const { latitude, longitude } = validParams.coordinates;
+          // Use PostgreSQL earthdistance extension with the earth_distance function
+          // This requires cube and earthdistance extensions to be enabled
+          // earth_distance returns meters, so we convert to miles
+          selectQuery += `,
+            earth_distance(
+              ll_to_earth(${latitude}, ${longitude}),
+              ll_to_earth(latitude, longitude)
+            ) * 0.000621371 AS distance_miles,
+            -- Also add the raw coordinates to the result for reference
+            latitude,
+            longitude`;
+        }
+        
+        // Start the query
+        let query = supabase
+          .from('roasters')
+          .select(selectQuery)
+          .eq('is_active', true);
+      
+        // Add text search if query parameter is provided
+        if (validParams.query && validParams.query.trim() !== '') {
+          console.error(`🔍 Filtering by query: '${validParams.query}'`);
+          query = query.ilike('roaster_name', `%${validParams.query}%`);
+        } else {
+          console.error('�� No query filter provided, returning all roasters');
+        }
+        
+        // Add location filter if provided
+        if (validParams.location && validParams.location.trim() !== '') {
+          console.error(`🔍 Filtering by location text: '${validParams.location}'`);
+          query = query.or(`city.ilike.%${validParams.location}%,state.ilike.%${validParams.location}%`);
+        }
+        
+        // Add geospatial search if coordinates are provided
+        if (validParams.coordinates) {
+          const { latitude, longitude, radiusMiles } = validParams.coordinates;
+          console.error(`🔍 Filtering by coordinates: (${latitude}, ${longitude}) with radius ${radiusMiles} miles`);
+          
+          // Filter by radius using the calculated distance_miles column from earthdistance
+          query = query.filter('distance_miles', 'lt', radiusMiles);
+          
+          console.error(`🔍 Filtering for roasters within ${radiusMiles} miles using earthdistance extension`);
+          
+          // Order by distance (closest first) - when coordinates are provided
+          query = query.order('distance_miles', { ascending: true });
+        } else {
+          // Default ordering by featured status when no coordinates are provided
+          query = query.order('is_featured', { ascending: false });
+        }
+        
+        // Apply result limit
+        query = query.limit(validParams.maxResults);
+        
+        // Add specific filters if provided
+        if (validParams.filters) {
+          // These would connect to additional columns in the roasters table
+          // For demonstration, assuming these are implemented as columns or related tables
+        }
+      
+        console.error('🔍 Executing query with earthdistance:', query.toString());
+        const { data, error } = await query;
+        
+        if (error) {
+          console.error('❌ Error searching roasters:', error);
+          console.error('❌ SQL query attempted:', query.toString());
+          console.error('❌ Error details:', JSON.stringify(error, null, 2));
+          throw new Error(`Failed to search for roasters: ${error.message}`);
+        }
+        
+        // Ensure data is an array
+        const roasterData = Array.isArray(data) ? data : [];
+        console.error(`🔍 Query returned ${roasterData.length} results:`, JSON.stringify(roasterData));
+        
+        // Format the response with type safety
+        const formattedResponse = {
+          roasters: roasterData.map((roaster: any) => {
+            // Apply default values for safety
+            return {
+              id: roaster.id || '',
+              name: roaster.roaster_name || 'Unknown Roaster',
+              location: (roaster.city && roaster.state) ? `${roaster.city}, ${roaster.state}` : null,
+              coordinates: (roaster.latitude && roaster.longitude) ? {
+                latitude: Number(roaster.latitude),
+                longitude: Number(roaster.longitude)
+              } : null,
+              foundedYear: roaster.founded_year || null,
+              description: roaster.about_us || '',
+              websiteUrl: roaster.website_url || '',
+              logoUrl: roaster.logo_url || '',
+              isFeatured: Boolean(roaster.is_featured),
+              // Include distance if available (from geospatial search)
+              distance: roaster.distance_miles ? parseFloat(roaster.distance_miles).toFixed(1) + ' miles' : null,
+            };
+          }),
+          totalResults: roasterData.length,
+        };
+        
+        console.error('✅ Returning formatted response:', JSON.stringify(formattedResponse));
+        return formattedResponse;
+      } catch (innerError) {
+        console.error('❌ Inner error in query execution:', innerError);
+        throw innerError;
       }
-      
-      // Start the query
-      let query = supabase
-        .from('roasters')
-        .select(selectQuery)
-        .eq('is_active', true);
-    
-    // Add text search if query parameter is provided
-    if (validParams.query && validParams.query.trim() !== '') {
-      console.error(`🔍 Filtering by query: '${validParams.query}'`);
-      query = query.ilike('roaster_name', `%${validParams.query}%`);
-    } else {
-      console.error('🔍 No query filter provided, returning all roasters');
-    }
-    
-    // Add location filter if provided
-    if (validParams.location && validParams.location.trim() !== '') {
-      console.error(`🔍 Filtering by location text: '${validParams.location}'`);
-      query = query.or(`city.ilike.%${validParams.location}%,state.ilike.%${validParams.location}%`);
-    }
-    
-    // Add geospatial search if coordinates are provided
-    if (validParams.coordinates) {
-      const { latitude, longitude, radiusMiles } = validParams.coordinates;
-      console.error(`🔍 Filtering by coordinates: (${latitude}, ${longitude}) with radius ${radiusMiles} miles`);
-      
-      // Filter by radius using the calculated distance_miles column from earthdistance
-      query = query.filter('distance_miles', 'lt', radiusMiles);
-      
-      console.error(`🔍 Filtering for roasters within ${radiusMiles} miles using earthdistance extension`);
-      
-      // Order by distance (closest first) - when coordinates are provided
-      query = query.order('distance_miles', { ascending: true });
-    } else {
-      // Default ordering by featured status when no coordinates are provided
-      query = query.order('is_featured', { ascending: false });
-    }
-    
-    // Apply result limit
-    query = query.limit(validParams.maxResults);
-    
-    // Add specific filters if provided
-    if (validParams.filters) {
-      // These would connect to additional columns in the roasters table
-      // For demonstration, assuming these are implemented as columns or related tables
-    }
-    
-      // Execute the query
-      console.error('🔄 Executing Supabase query...');
-      const { data, error } = await query;
-      
-      if (error) {
-        console.error('❌ Error searching roasters:', error);
-        throw new Error('Failed to search for roasters');
-      }
-      
-      // Ensure data is an array
-      const roasterData = Array.isArray(data) ? data : [];
-      console.error(`🔍 Query returned ${roasterData.length} results:`, JSON.stringify(roasterData));
-      
-      // Format the response with type safety
-      const formattedResponse = {
-        roasters: roasterData.map((roaster: any) => {
-          // Apply default values for safety
-          return {
-            id: roaster.id || '',
-            name: roaster.roaster_name || 'Unknown Roaster',
-            location: (roaster.city && roaster.state) ? `${roaster.city}, ${roaster.state}` : null,
-            coordinates: (roaster.latitude && roaster.longitude) ? {
-              latitude: Number(roaster.latitude),
-              longitude: Number(roaster.longitude)
-            } : null,
-            foundedYear: roaster.founded_year || null,
-            description: roaster.about_us || '',
-            websiteUrl: roaster.website_url || '',
-            logoUrl: roaster.logo_url || '',
-            isFeatured: Boolean(roaster.is_featured),
-            // Include distance if available (from geospatial search)
-            distance: roaster.distance_miles ? parseFloat(roaster.distance_miles).toFixed(1) + ' miles' : null,
-          };
-        }),
-        totalResults: roasterData.length,
-      };
-      
-      console.error('✅ Returning formatted response:', JSON.stringify(formattedResponse));
-      return formattedResponse;
     });
   } catch (error) {
-    console.error('Error in searchCoffeeRoasters:', error);
+    console.error('❌ Error in searchCoffeeRoasters:', error);
     throw error;
   }
 }
