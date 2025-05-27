@@ -102,14 +102,14 @@ export async function searchCoffeeRoasters(
       // Add distance calculation if coordinates are provided
       if (validParams.coordinates) {
         const { latitude, longitude } = validParams.coordinates;
-        // Use standard PostgreSQL functions for distance calculation - Haversine formula
-        selectQuery += `, 
-          111.111 * 
-          DEGREES(ACOS(LEAST(1.0, COS(RADIANS(latitude)) * 
-          COS(RADIANS(${latitude})) * 
-          COS(RADIANS(longitude - ${longitude})) + 
-          SIN(RADIANS(latitude)) * 
-          SIN(RADIANS(${latitude}))))) AS distance_miles`;
+        // Use PostgreSQL earthdistance extension with point operator
+        // This requires the earthdistance and cube extensions to be enabled
+        // The <@> operator returns distance in miles
+        selectQuery += `,
+          point(longitude, latitude) <@> point(${longitude}, ${latitude}) AS distance_miles,
+          -- Also add the raw coordinates to the result for reference
+          latitude,
+          longitude`;
       }
       
       // Start the query
@@ -137,11 +137,10 @@ export async function searchCoffeeRoasters(
       const { latitude, longitude, radiusMiles } = validParams.coordinates;
       console.error(`🔍 Filtering by coordinates: (${latitude}, ${longitude}) with radius ${radiusMiles} miles`);
       
-      // Filter by radius using our calculated distance_miles column
-      // Standard comparison with the calculated Haversine distance
+      // Filter by radius using the calculated distance_miles column from earthdistance
       query = query.filter('distance_miles', 'lt', radiusMiles);
       
-      console.error(`🔍 Filtering for roasters within ${radiusMiles} miles using Haversine formula`);
+      console.error(`🔍 Filtering for roasters within ${radiusMiles} miles using earthdistance extension`);
       
       // Order by distance (closest first) - when coordinates are provided
       query = query.order('distance_miles', { ascending: true });
